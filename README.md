@@ -14,8 +14,11 @@ $ go build
 $ ./bigpicture
 
 ```
+## Runtime opts
 
-## Licence
+You can specify _-d="some/dowload/folder"_ flag if you want you pictures downloaded somewhere else than _$HOME/pictures/bigpicture_.
+
+## License
 
 MIT
 
