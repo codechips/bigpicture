@@ -2,20 +2,20 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/user"
 	"path"
-	"runtime"
 	"sync"
 
 	"github.com/PuerkitoBio/goquery"
 )
 
 var (
-	downloadDir = path.Join("pictures", "bigpicture")
+	downloadDir = path.Join("Pictures", "bigpicture")
 	dirHelp     = "Download dir. Defaults to ~" + downloadDir
 	dir         = flag.String("dir", "", dirHelp)
 )
@@ -41,13 +41,13 @@ func downloadImage(wg *sync.WaitGroup, href string) {
 		}
 
 		io.Copy(file, img.Body)
-		log.Printf(".")
+		fmt.Printf("+")
 
 		defer file.Close()
 		defer img.Body.Close()
 
 	} else {
-		log.Printf("-")
+		fmt.Printf(".")
 	}
 }
 
@@ -75,22 +75,20 @@ func init() {
 }
 
 func createDir(path string) {
-	info, err := os.Stat(path)
-	if os.IsNotExist(err) {
+	if info, err := os.Stat(path); os.IsNotExist(err) {
 		if err = os.Mkdir(path, 0777); err != nil {
 			log.Fatal(err)
 			return
 		}
-	}
-
-	if !info.IsDir() {
-		log.Fatalf("%s exists but it's not a dir. Stopping.", path)
+	} else {
+		if !info.IsDir() {
+			log.Fatalf("%s exists but it's not a dir. Stopping.", path)
+		}
 	}
 }
 
 func main() {
 	flag.Parse()
-	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	if *dir != "" {
 		downloadDir = *dir
@@ -101,6 +99,7 @@ func main() {
 		}
 		downloadDir = path.Join(usr.HomeDir, downloadDir)
 	}
+
 	createDir(downloadDir)
 
 	doc, err := goquery.NewDocument("http://www.bostonglobe.com/news/bigpicture")
