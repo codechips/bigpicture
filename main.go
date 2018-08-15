@@ -20,7 +20,7 @@ var (
 	dir         = flag.String("dir", "", dirHelp)
 )
 
-func downloadImage(wg *sync.WaitGroup, href string) {
+func downloadImage(wg *sync.WaitGroup, newFileCountChan chan bool, href string) {
 	defer wg.Done()
 
 	name := path.Base(href)
@@ -41,17 +41,14 @@ func downloadImage(wg *sync.WaitGroup, href string) {
 		}
 
 		io.Copy(file, img.Body)
-		fmt.Printf("+")
+		newFileCountChan <- true
 
 		defer file.Close()
 		defer img.Body.Close()
-
-	} else {
-		fmt.Printf(".")
 	}
 }
 
-func loadPage(wg *sync.WaitGroup, href string) {
+func loadPage(wg *sync.WaitGroup, newFileCountChan chan bool, fileCountChan chan int, href string) {
 	defer wg.Done()
 
 	doc, err := goquery.NewDocument("http://www.bostonglobe.com" + href)
@@ -59,19 +56,21 @@ func loadPage(wg *sync.WaitGroup, href string) {
 		log.Fatal(err)
 	}
 
-	images := doc.Find(".photo img")
 	var iwg sync.WaitGroup
 
+	headline := doc.Find("#container .pictureInfo-headline").First()
+	images := doc.Find(".photo img")
+
 	iwg.Add(images.Length())
+	fileCountChan <- images.Length()
+
+	fmt.Printf("Downloading %d images from %q\n", images.Length(), headline.Text())
 	images.Each(func(i int, s *goquery.Selection) {
 		src, _ := s.Attr("src")
-		go downloadImage(&iwg, src)
+		go downloadImage(&iwg, newFileCountChan, src)
 	})
-	iwg.Wait()
-}
 
-func init() {
-	flag.StringVar(dir, "d", "", dirHelp)
+	iwg.Wait()
 }
 
 func createDir(path string) {
@@ -82,13 +81,18 @@ func createDir(path string) {
 		}
 	} else {
 		if !info.IsDir() {
-			log.Fatalf("%s exists but it's not a dir. Stopping.", path)
+			log.Fatalf("File %s exists but it's not a directory. Aborting.", path)
 		}
 	}
 }
 
 func main() {
 	flag.Parse()
+
+	totalFileCount := 0
+	newFileCount := 0
+	newFileCountChan := make(chan bool)
+	totalFileCountChan := make(chan int)
 
 	if *dir != "" {
 		downloadDir = *dir
@@ -114,8 +118,29 @@ func main() {
 
 	sel.Each(func(i int, s *goquery.Selection) {
 		href, _ := s.Attr("href")
-		go loadPage(&wg, href)
+		go loadPage(&wg, newFileCountChan, totalFileCountChan, href)
 	})
 
+	go func() {
+		for count := range totalFileCountChan {
+			totalFileCount = totalFileCount + count
+		}
+	}()
+
+	go func() {
+		for range newFileCountChan {
+			newFileCount = newFileCount + 1
+		}
+	}()
+
 	wg.Wait()
+
+	close(totalFileCountChan)
+	close(newFileCountChan)
+
+	fmt.Printf("\n%d new / %d existing / total %d images\n", newFileCount, totalFileCount-newFileCount, totalFileCount)
+}
+
+func init() {
+	flag.StringVar(dir, "d", "", dirHelp)
 }
